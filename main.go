@@ -4,8 +4,12 @@ import (
     tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
     "errors"
     "fmt"
-    "strings"
+    "net/http"
+    "io/ioutil"
+    "encoding/json"
     "os"
+    "strings"
+    "time"
 )
 
 func processQuery(update tgbotapi.Update) (tgbotapi.InlineConfig) {
@@ -25,33 +29,15 @@ func processQuery(update tgbotapi.Update) (tgbotapi.InlineConfig) {
     return inline
 }
 
-var words []string = []string {
-    "пхп",
-    "php",
-    "вуе",
-    "vue",
-    "яндекс",
-    " го ",
-    " go ",
-    "golang",
-    "голанг",
-    "питон",
-    "python",
-    "стартап",
-    "карпрайс",
-    "ангуляр",
-    "angular",
-    "реакт",
-    "react",
-    "джаваскрипт",
-    "дзюба",
-}
 
 
-func processMessage(update tgbotapi.Update) (error, *tgbotapi.MessageConfig) {
+var _words []string
+
+
+func processMessage(update tgbotapi.Update, words *[]string) (error, *tgbotapi.MessageConfig) {
     message := update.Message.Text
     lower := strings.ToLower(message)
-    for _, word := range words {
+    for _, word := range *words {
         if strings.Contains(lower, word) {
             reply := "Не " + word + ", а говно"
             msg := tgbotapi.NewMessage(update.Message.Chat.ID, reply)
@@ -62,7 +48,31 @@ func processMessage(update tgbotapi.Update) (error, *tgbotapi.MessageConfig) {
     return errors.New("No match"), nil
 }
 
+func getWords(words *[]string) {
+    for {
+        response, err := http.Get("https://raw.githubusercontent.com/alexeimoisseev/NeGovnoABot/master/words.json")
+        if err != nil {
+            fmt.Println("Error getting words")
+            fmt.Println(err)
+            continue
+        }
+        defer response.Body.Close()
+        contents, err := ioutil.ReadAll(response.Body)
+        if err != nil {
+            fmt.Println("Error reading body stream")
+            fmt.Println(err)
+        }
+        err = json.Unmarshal(contents, words)
+        if err != nil {
+            fmt.Println("Error parsing json")
+            fmt.Println(err)
+        }
+        time.Sleep(60 * time.Second)
+    }
+}
+
 func main() {
+    go getWords(&_words)
     key := os.Getenv("KEY")
     bot, err := tgbotapi.NewBotAPI(key)
     if err != nil {
@@ -78,7 +88,7 @@ func main() {
         }
 
         if update.Message != nil {
-            err, reply := processMessage(update)
+            err, reply := processMessage(update, &_words)
             if err == nil {
                 bot.Send(reply)
             }
