@@ -2,6 +2,7 @@ package main
 
 import (
     tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
+    "github.com/jpillora/go-ogle-analytics"
     "errors"
     "fmt"
     "net/http"
@@ -11,6 +12,9 @@ import (
     "strings"
     "time"
 )
+
+var _words []string
+var gaClient *ga.Client
 
 func processQuery(update tgbotapi.Update) (tgbotapi.InlineConfig) {
     var results []interface{}
@@ -26,26 +30,8 @@ func processQuery(update tgbotapi.Update) (tgbotapi.InlineConfig) {
         CacheTime: 0,
         Results: results,
     }
+    gaClient.Send(ga.NewEvent("Inline", "Govno").Label(query))
     return inline
-}
-
-
-
-var _words []string
-
-
-func processMessage(update tgbotapi.Update, words *[]string) (error, *tgbotapi.MessageConfig) {
-    message := update.Message.Text
-    lower := strings.ToLower(message)
-    for _, word := range *words {
-        if strings.Contains(lower, word) {
-            reply := "Не " + word + ", а говно"
-            msg := tgbotapi.NewMessage(update.Message.Chat.ID, reply)
-            msg.ReplyToMessageID = update.Message.MessageID
-            return nil, &msg
-        }
-    }
-    return errors.New("No match"), nil
 }
 
 func getWords(words *[]string) {
@@ -71,9 +57,39 @@ func getWords(words *[]string) {
     }
 }
 
+func createReply(update tgbotapi.Update) (error, *tgbotapi.MessageConfig) {
+    message := update.Message.Text
+    lower := strings.ToLower(message)
+    if strings.Contains(lower, "кадыров") {
+        reply := "Извинись!"
+        msg := tgbotapi.NewMessage(update.Message.Chat.ID, reply)
+        msg.ReplyToMessageID = update.Message.MessageID
+        gaClient.Send(ga.NewEvent("Message", "Sorry"))
+        return nil, &msg
+    }
+
+    for _, word := range _words {
+        if strings.Contains(lower, word) {
+            reply := "Не " + word + ", а говно"
+            msg := tgbotapi.NewMessage(update.Message.Chat.ID, reply)
+            msg.ReplyToMessageID = update.Message.MessageID
+            gaClient.Send(ga.NewEvent("Message", "Govno").Label(word))
+            return nil, &msg
+        }
+    }
+    return errors.New("No match"), nil
+}
+
 func main() {
     go getWords(&_words)
     key := os.Getenv("KEY")
+    gaId := os.Getenv("GA")
+    _client, err := ga.NewClient(gaId)
+    if err != nil {
+        panic(err)
+    }
+    gaClient = _client
+
     bot, err := tgbotapi.NewBotAPI(key)
     if err != nil {
         panic(err)
@@ -88,7 +104,7 @@ func main() {
         }
 
         if update.Message != nil {
-            err, reply := processMessage(update, &_words)
+            err, reply := createReply(update)
             if err == nil {
                 bot.Send(reply)
             }
