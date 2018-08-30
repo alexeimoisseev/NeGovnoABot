@@ -15,11 +15,13 @@ import (
 
 var _words []string
 var gaClient *ga.Client
+var yesterday = time.Now().Add(-25 * time.Hour)
+var mutedAt *time.Time = &yesterday
 
 func processQuery(update tgbotapi.Update) (tgbotapi.InlineConfig) {
     var results []interface{}
     query := update.InlineQuery.Query
-    result := "Не " + query + ", а говно"
+    result := "Не " + query + ", а говно."
     if query != "" {
         article := tgbotapi.NewInlineQueryResultArticle(update.InlineQuery.ID, result, result)
         results = append(results, article)
@@ -60,6 +62,33 @@ func getWords(words *[]string) {
 func createReply(update tgbotapi.Update) (error, *tgbotapi.MessageConfig) {
     message := update.Message.Text
     lower := strings.ToLower(message)
+
+    if strings.Contains(lower, "/mute") {
+        if time.Since(*mutedAt).Minutes() < 60 {
+            msg := tgbotapi.NewMessage(update.Message.Chat.ID,
+                "Я и так молчу.")
+            gaClient.Send(ga.NewEvent("Command", "Mute already"))
+            return nil, &msg
+        } else if time.Since(*mutedAt).Hours() > 24 {
+            now := time.Now();
+            mutedAt = &now
+            msg := tgbotapi.NewMessage(update.Message.Chat.ID,
+                "Я буду молчать целый час. Используйте это время с умом.")
+            gaClient.Send(ga.NewEvent("Command", "Mute"))
+            return nil, &msg
+        } else {
+            msg := tgbotapi.NewMessage(update.Message.Chat.ID,
+                "Я сегодня уже молчал достаточно.")
+            gaClient.Send(ga.NewEvent("Command", "Mute failed"))
+            return nil, &msg
+        }
+    }
+
+    if time.Since(*mutedAt).Minutes() < 60 {
+        gaClient.Send(ga.NewEvent("Message", "Muted"))
+        return errors.New("Muted"), nil
+    }
+
     if strings.Contains(lower, "кадыров") {
         reply := "Извинись!"
         msg := tgbotapi.NewMessage(update.Message.Chat.ID, reply)
@@ -70,7 +99,7 @@ func createReply(update tgbotapi.Update) (error, *tgbotapi.MessageConfig) {
 
     for _, word := range _words {
         if strings.Contains(lower, word) {
-            reply := "Не " + word + ", а говно"
+            reply := "Не " + word + ", а говно."
             msg := tgbotapi.NewMessage(update.Message.Chat.ID, reply)
             msg.ReplyToMessageID = update.Message.MessageID
             gaClient.Send(ga.NewEvent("Message", "Govno").Label(word))
