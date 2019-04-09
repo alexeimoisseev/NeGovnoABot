@@ -10,6 +10,7 @@ RUN go build
 FROM alpine
 
 WORKDIR /var/app
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /go/src/app /var/app/
 
 CMD "./app"
